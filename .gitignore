@@ -1,0 +1,2 @@
+# Chrome 独立 profile 目录，包含 localStorage 等运行时数据
+.task-profile/

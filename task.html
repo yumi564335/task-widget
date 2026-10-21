@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#667eea">
+<meta name="description" content="简单的任务清单小工具">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<title>任务便签</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    color-scheme: light dark;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: transparent;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    padding: 0;
+  }
+  /* 桌面端：小窗口模式，禁止滚动和文本选中（除输入框外） */
+  @media (pointer: fine) {
+    html, body {
+      overflow: hidden;
+      user-select: none;
+    }
+    input, textarea { user-select: text; }
+  }
+  /* 移动端：允许滚动，文本可选 */
+  @media (pointer: coarse) {
+    html, body {
+      height: auto;
+      min-height: 100%;
+      overflow-y: auto;
+      user-select: none;
+    }
+    .body, .container { overflow-y: visible !important; }
+  }
+  .container {
+    background: rgba(255,255,255,0.96);
+    backdrop-filter: blur(10px);
+    border-radius: 10px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+    width: 100%;
+    max-width: 500px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  /* 移动端：容器占满全屏，去掉圆角和阴影 */
+  @media (pointer: coarse) {
+    .container {
+      max-width: 100%;
+      border-radius: 0;
+      box-shadow: none;
+      min-height: 100vh;
+    }
+  }
+  .titlebar {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+  }
+  /* 桌面端：标题栏可拖动（Chrome --app 模式） */
+  @media (pointer: fine) {
+    .titlebar {
+      cursor: move;
+      -webkit-app-region: drag;
+    }
+  }
+  .titlebar .title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+  }
+  .titlebar .controls {
+    display: flex;
+    gap: 6px;
+  }
+  /* 桌面端：关闭按钮区域不拖动 */
+  @media (pointer: fine) {
+    .titlebar .controls {
+      -webkit-app-region: no-drag;
+    }
+  }
+  /* 移动端/小屏幕：隐藏关闭按钮 */
+  @media (pointer: coarse), (max-width: 600px) {
+    .titlebar .controls { display: none; }
+  }
+  .titlebar button {
+    background: rgba(255,255,255,0.2);
+    border: none;
+    color: #fff;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+    transition: background 0.15s;
+  }
+  .titlebar button:hover { background: rgba(255,255,255,0.4); }
+  .titlebar button.close:hover { background: #ff4757; }
+  .body {
+    padding: 14px;
+    overflow-y: auto;
+    flex: 1;
+  }
+  h1 {
+    color: #333;
+    margin-bottom: 12px;
+    text-align: center;
+    font-size: 16px;
+  }
+  .input-group {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  #taskInput {
+    flex: 1;
+    padding: 8px 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+    user-select: text;
+  }
+  #taskInput:focus { border-color: #667eea; }
+  #addBtn {
+    padding: 8px 16px;
+    background: #667eea;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.2s;
+  }
+  #addBtn:hover { background: #5568d3; }
+  #refreshBtn {
+    padding: 8px 12px;
+    background: #f0f1f5;
+    color: #555;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.2s;
+  }
+  #refreshBtn:hover { background: #e4e6ec; }
+  .tool-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .tool-row button {
+    flex: 1;
+    padding: 5px 0;
+    background: transparent;
+    color: #666;
+    border: 1px dashed #d0d0d0;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.15s;
+  }
+  .tool-row button:hover {
+    background: #f0f1f5;
+    color: #333;
+    border-style: solid;
+  }
+  ul { list-style: none; }
+  li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    transition: all 0.2s;
+    font-size: 13px;
+  }
+  li:hover { background: #eef0f3; }
+  li.completed .task-text {
+    text-decoration: line-through;
+    color: #999;
+  }
+  .checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #667eea;
+  }
+  .task-text {
+    flex: 1;
+    color: #333;
+    font-size: 13px;
+    word-break: break-all;
+    user-select: text;
+  }
+  .edit-input {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 6px;
+    border: 2px solid #667eea;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+    user-select: text;
+  }
+  .delete-btn {
+    background: #ff4757;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: background 0.2s;
+  }
+  .delete-btn:hover { background: #ee0026; }
+  .empty {
+    text-align: center;
+    color: #999;
+    padding: 14px;
+    font-size: 13px;
+  }
+  .stats {
+    text-align: center;
+    color: #666;
+    font-size: 11px;
+    margin-top: 8px;
+    padding-bottom: 4px;
+  }
+  .undo-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 14px 12px;
+    padding: 6px 10px;
+    background: #333;
+    color: #fff;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+  .undo-bar[hidden] { display: none; }
+  .undo-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .undo-bar button {
+    background: rgba(255,255,255,0.18);
+    border: none;
+    color: #fff;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .undo-bar button:hover { background: rgba(255,255,255,0.35); }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #999; }
+
+  @media (prefers-color-scheme: dark) {
+    .container {
+      background: rgba(28,30,36,0.96);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+    }
+    h1 { color: #e6e6e6; }
+    #taskInput {
+      background: #23262c;
+      border-color: #3a3f47;
+      color: #e6e6e6;
+    }
+    #taskInput::placeholder { color: #6b7280; }
+    #taskInput:focus { border-color: #667eea; }
+    #refreshBtn {
+      background: #23262c;
+      border-color: #3a3f47;
+      color: #c3c7cd;
+    }
+    #refreshBtn:hover { background: #2d3138; }
+    .tool-row button {
+      color: #9aa0a6;
+      border-color: #444a52;
+    }
+    .tool-row button:hover {
+      background: #23262c;
+      color: #e6e6e6;
+      border-color: #5a616a;
+    }
+    li { background: #23262c; }
+    li:hover { background: #2b2f36; }
+    .task-text { color: #e6e6e6; }
+    li.completed .task-text { color: #6b7280; }
+    .edit-input {
+      background: #1b1e23;
+      color: #e6e6e6;
+    }
+    .empty { color: #6b7280; }
+    .stats { color: #9aa0a6; }
+    .undo-bar { background: #3a3f47; }
+    ::-webkit-scrollbar-thumb { background: #444a52; }
+    ::-webkit-scrollbar-thumb:hover { background: #5a616a; }
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="titlebar">
+      <div class="title">📝 任务便签</div>
+      <div class="controls">
+        <button id="closeBtn" class="close" title="关闭" aria-label="关闭窗口">✕</button>
+      </div>
+    </div>
+    <div class="body">
+      <div class="input-group">
+        <input type="text" id="taskInput" placeholder="输入任务后回车..." maxlength="100">
+        <button id="addBtn">添加</button>
+        <button id="refreshBtn" title="清空所有勾选状态">刷新</button>
+      </div>
+      <div class="tool-row">
+        <button id="exportBtn" title="导出任务到 JSON 文件">导出备份</button>
+        <button id="importBtn" title="从 JSON 文件导入任务">导入备份</button>
+      </div>
+      <ul id="taskList"></ul>
+      <div class="empty" id="emptyState" hidden>
+        暂无任务,添加一个吧~<br>
+        <span style="font-size:11px;color:#aaa;">如果从旧版本升级后任务丢失,点击上方"导入备份"恢复</span>
+      </div>
+      <div class="stats" id="stats" role="status" aria-live="polite"></div>
+    </div>
+    <div class="undo-bar" id="undoBar" hidden>
+      <span class="undo-text" id="undoText"></span>
+      <button id="undoBtn">撤销</button>
+    </div>
+  </div>
+
+<script>
+  const taskInput = document.getElementById('taskInput');
+  const addBtn = document.getElementById('addBtn');
+  const taskList = document.getElementById('taskList');
+  const emptyState = document.getElementById('emptyState');
+  const stats = document.getElementById('stats');
+  const undoBar = document.getElementById('undoBar');
+  const undoText = document.getElementById('undoText');
+
+  function loadTasks() {
+    try {
+      const raw = JSON.parse(localStorage.getItem('tasks') || '[]');
+      return Array.isArray(raw) ? raw : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  let tasks = loadTasks();
+
+  function save() {
+    try {
+      localStorage.setItem('tasks', JSON.stringify(tasks));
+    } catch (e) {
+      console.warn('任务保存失败:', e);
+    }
+  }
+
+  function render(scrollToIndex) {
+    taskList.innerHTML = '';
+    emptyState.hidden = tasks.length > 0;
+    let target = null;
+
+    tasks
+      .map((task, index) => ({ task, index }))
+      .sort((a, b) => (a.task.done ? 1 : 0) - (b.task.done ? 1 : 0))
+      .forEach(({ task, index }) => {
+        const li = document.createElement('li');
+        if (task.done) li.classList.add('completed');
+        li.innerHTML = `
+          <input type="checkbox" class="checkbox" ${task.done ? 'checked' : ''}>
+          <span class="task-text" title="双击或长按编辑"></span>
+          <button class="delete-btn">删除</button>
+        `;
+
+        const textEl = li.querySelector('.task-text');
+        textEl.textContent = task.text;
+
+        const checkbox = li.querySelector('.checkbox');
+        checkbox.setAttribute('aria-label', `标记「${task.text}」为${task.done ? '未完成' : '已完成'}`);
+        checkbox.addEventListener('change', () => {
+          tasks[index].done = !tasks[index].done;
+          save();
+          render();
+        });
+
+        const deleteBtn = li.querySelector('.delete-btn');
+        deleteBtn.setAttribute('aria-label', `删除任务「${task.text}」`);
+        deleteBtn.addEventListener('click', () => deleteTask(index));
+
+        // 桌面端：双击编辑；移动端：长按编辑
+        textEl.addEventListener('dblclick', () => startEdit(index, li));
+        addLongPress(textEl, () => startEdit(index, li));
+
+        if (index === scrollToIndex) target = li;
+        taskList.appendChild(li);
+      });
+
+    if (target) target.scrollIntoView({ block: 'nearest' });
+
+    const doneCount = tasks.filter(t => t.done).length;
+    stats.textContent = `共 ${tasks.length} 项,已完成 ${doneCount} 项`;
+  }
+
+  // 长按事件（约 500ms 触发），桌面鼠标按住也会触发；触发后阻止后续 click/dblclick
+  function addLongPress(el, callback) {
+    let timer = null;
+    let longPressTriggered = false;
+
+    const start = (e) => {
+      longPressTriggered = false;
+      timer = setTimeout(() => {
+        longPressTriggered = true;
+        callback(e);
+      }, 500);
+    };
+    const cancel = () => {
+      if (timer) { clearTimeout(timer); timer = null; }
+    };
+    // 长按触发后，屏蔽紧接着的 click/dblclick（移动端会因为长按弹起触发 dblclick）
+    const preventIfLongPressed = (e) => {
+      if (longPressTriggered) {
+        e.stopImmediatePropagation();
+        longPressTriggered = false;
+      }
+    };
+
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchend', cancel);
+    el.addEventListener('touchmove', cancel, { passive: true });
+    el.addEventListener('touchcancel', cancel);
+
+    el.addEventListener('mousedown', start);
+    el.addEventListener('mouseup', cancel);
+    el.addEventListener('mouseleave', cancel);
+
+    el.addEventListener('click', preventIfLongPressed, true);
+    el.addEventListener('dblclick', preventIfLongPressed, true);
+  }
+
+  function startEdit(index, li) {
+    const span = li.querySelector('.task-text');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'edit-input';
+    input.maxLength = 100;
+    input.value = tasks[index].text;
+    span.replaceWith(input);
+    input.focus();
+    input.select();
+
+    let settled = false;
+    const finish = (keep) => {
+      if (settled) return;
+      settled = true;
+      const text = input.value.trim();
+      if (keep && text && text !== tasks[index].text) {
+        tasks[index].text = text;
+        save();
+        render();
+      } else {
+        input.replaceWith(span);
+      }
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') finish(true);
+      else if (e.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', () => finish(true));
+  }
+
+  function addTask() {
+    const text = taskInput.value.trim();
+    if (!text) return;
+    tasks.push({ text, done: false });
+    taskInput.value = '';
+    save();
+    render(tasks.length - 1);
+  }
+
+  function clearChecked() {
+    if (!tasks.some(t => t.done)) return;
+    tasks.forEach(t => { t.done = false; });
+    save();
+    render();
+  }
+
+  let undoState = null;
+
+  function hideUndo() {
+    if (undoState) clearTimeout(undoState.timer);
+    undoState = null;
+    undoBar.hidden = true;
+  }
+
+  function deleteTask(index) {
+    const removed = tasks[index];
+    tasks.splice(index, 1);
+    save();
+    render();
+    if (undoState) clearTimeout(undoState.timer);
+    undoState = { task: removed, index, timer: setTimeout(hideUndo, 3000) };
+    undoText.textContent = `已删除「${removed.text}」`;
+    undoBar.hidden = false;
+  }
+
+  document.getElementById('undoBtn').addEventListener('click', () => {
+    if (!undoState) return;
+    const { task, index } = undoState;
+    hideUndo();
+    tasks.splice(index, 0, task);
+    save();
+    render();
+  });
+
+  window.addEventListener('storage', (e) => {
+    if (e.key !== 'tasks') return;
+    tasks = loadTasks();
+    render();
+  });
+
+  function exportTasks() {
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      tasks: tasks
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    a.href = url;
+    a.download = `tasks-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function importTasksFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      let data;
+      try {
+        data = JSON.parse(reader.result);
+      } catch {
+        alert('文件不是有效的 JSON 格式');
+        return;
+      }
+      const list = Array.isArray(data) ? data : data?.tasks;
+      if (!Array.isArray(list) || !list.every(t => t && typeof t.text === 'string')) {
+        alert('文件格式不兼容');
+        return;
+      }
+      if (!confirm(`确认用备份文件覆盖当前 ${tasks.length} 个任务?`)) return;
+      tasks = list.map(t => ({ text: String(t.text).slice(0, 100), done: !!t.done }));
+      save();
+      render();
+    };
+    reader.readAsText(file);
+  }
+
+  addBtn.addEventListener('click', addTask);
+  document.getElementById('refreshBtn').addEventListener('click', clearChecked);
+  document.getElementById('exportBtn').addEventListener('click', exportTasks);
+  document.getElementById('importBtn').addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json';
+    input.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) importTasksFile(file);
+    });
+    input.click();
+  });
+  taskInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addTask();
+  });
+
+  document.getElementById('closeBtn').addEventListener('click', () => window.close());
+
+  // 注册 Service Worker（仅在 HTTPS 或 localhost 下生效）
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./service-worker.js')
+        .then((reg) => {
+          console.log('Service Worker 注册成功:', reg.scope);
+        })
+        .catch((err) => {
+          console.warn('Service Worker 注册失败:', err);
+        });
+    });
+  }
+
+  render();
+</script>
+</body>
+</html>
